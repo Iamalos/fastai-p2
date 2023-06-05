@@ -1,0 +1,9 @@
+project:
+  output-dir: _docs
+
+website:
+  title: "fastai-p2"
+  site-url: "https://Iamalos.github.io/fastai-p2"
+  description: "FastAI Course Part 2 (2022)"
+  repo-branch: main
+  repo-url: "https://github.com/Iamalos/fastai-p2"
