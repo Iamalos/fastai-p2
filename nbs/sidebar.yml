@@ -1,0 +1,13 @@
+website:
+  sidebar:
+    contents:
+      - index.ipynb
+      - 01_matmul.ipynb
+      - 02_clustering_algo.ipynb
+      - 02_meanshift.ipynb
+      - 03_backprop.ipynb
+      - 04_minibatch_training.ipynb
+      - 05_datasets.ipynb
+      - 06_foundations.ipynb
+      - 07_convolutions.ipynb
+      - 08_autoencoder.ipynb
