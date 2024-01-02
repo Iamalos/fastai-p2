@@ -63,6 +63,7 @@ def clean_mem():
 
 # %% ../nbs/11_initializing.ipynb 93
 class BatchTransformCB(Callback):
+    # tfm can be nn.Sequential in order to combine several transforms
     def __init__(self, tfm, on_train=True, on_val=True): fc.store_attr()
     
     def before_batch(self, learn):
