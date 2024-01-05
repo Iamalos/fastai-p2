@@ -125,7 +125,7 @@ def show_images(ims: list, # Images to show
                ):
     axs = get_grid(len(ims), nrows, ncols, **kwargs)[1].flat
     # import ipdb; ipdb.set_trace()
-    for im, t, ax in zip_longest(ims, titles, axs): show_image(im, ax=ax, title=t)
+    for im, t, ax in zip_longest(ims, titles or [], axs): show_image(im, ax=ax, title=t)
 
 # %% ../nbs/05_datasets.ipynb 86
 class DataLoaders: 
