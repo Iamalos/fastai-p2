@@ -20,82 +20,95 @@ from .conv import *
 
 from fastprogress import progress_bar, master_bar
 
-# %% ../nbs/09_learner.ipynb 24
+# %% ../nbs/09_learner.ipynb 30
 class CancelFitException(Exception): pass
 class CancelBatchException(Exception): pass
 class CancelEpochException(Exception): pass
 
-# %% ../nbs/09_learner.ipynb 26
+# %% ../nbs/09_learner.ipynb 32
 class Callback: order = 0
 
-# %% ../nbs/09_learner.ipynb 28
-def run_cbs(cbs, method_nm, learn=None):
-    for cb in sorted(cbs, key=attrgetter('order')):
+# %% ../nbs/09_learner.ipynb 34
+def run_cbs(cbs, # List of callbacks, 
+            method_nm: str, 
+            learn=None):
+    # loop through all the callbacks in order of 'order'
+    # import ipdb; ipdb.set_trace()
+    for cb in sorted(cbs,key=attrgetter('order')):
+        # get their `method_nm` if it exists and call them on the learner
         method = getattr(cb, method_nm, None)
-        #?
         if method is not None: method(learn)
 
-# %% ../nbs/09_learner.ipynb 37
+# %% ../nbs/09_learner.ipynb 45
 class SingleBatchCB(Callback):
     order = 1
     def after_batch(self, learn): raise CancelFitException()
 
-# %% ../nbs/09_learner.ipynb 48
+# %% ../nbs/09_learner.ipynb 58
 from torcheval.metrics import MulticlassAccuracy, Mean
 
-# %% ../nbs/09_learner.ipynb 52
+# %% ../nbs/09_learner.ipynb 62
 def to_cpu(x):
-    # import ipdb; ipdb.set_trace()
     """Recursively move data to cpu"""
     # mapping case
-    if isinstance(x, Mapping): return {k: to_cpu(v) for k,v in x.items()}
+    if isinstance(x, Mapping): return {k:to_cpu(v) for k,v in x.items()}
     # list case
     if isinstance(x, list): return [to_cpu(o) for o in x]
     # tuple case (via list)
     if isinstance(x, tuple): return tuple(to_cpu(list(x)))
-    # base case (recursive)
-    res = x.detach().cpu()
+    # base case (tensor)
+    res = x.to('cpu')
+    # cast to float if tensor.dtype was float16
     return res.float() if res.dtype == torch.float16 else res
                                           
 
-# %% ../nbs/09_learner.ipynb 55
+# %% ../nbs/09_learner.ipynb 65
 class MetricsCB(Callback):
     def __init__(self, 
                  *ms, # list of metrics
                  **metrics, # dictionary of metrics
                 ):
-        # pool all unnamed metrics into a dictionary
+        # pool all unnamed metrics into a dictionary `metrics` using __name__ of its type as key
         for o in ms: metrics[type(o).__name__] = o
+        # save to self.metrics
         self.metrics = metrics
-        self.all_metrics = copy(metrics)
+        # make a shallow copy of metrics into `all_metrics`
+        self.all_metrics = copy(self.metrics)
+        # add 'loss' metric (Mean()) to `all_metrics`, add it to `self.loss` for quick access
         self.all_metrics['loss'] = self.loss = Mean()
         
     def _log(self, d): print(d)
-    def before_fit(self, learn): learn.metrics = self
-    def before_epoch(self, learn): [o.reset() for o in self.all_metrics.values()]
-    
-    # print metrics after each epoch
-    def after_epoch(self, learn):
-        # save log of all metrics
-        log = {k: f'{v.compute():.3f}' for k,v in self.all_metrics.items()}
+    def before_fit(self, learn): learn.metrics = self # attach MetricsCB to a learner `metrics` property
+    def before_epoch(self, learn): [o.reset() for o in self.all_metrics.values()] # reset `all_metrics`
+   
+    def after_epoch(self, learn): 
+        # save log of `all_metrics`, using metric `compute` method and 3 floating points
+        log = {k: f'{v.compute():.3f}' for k,v in self.all_metrics.items()} 
+        # add `epoch` to log and `train` mode: `train` or `eval`
         log['epoch'] = learn.epoch
-        log['train'] = 'train' if learn.model.training else 'eval'
+        log['train'] = 'train' if learn.model.training else 'valid'
+        # pass to _log
         self._log(log)
     
-    def after_batch(self,learn):
-        # unpack all remaining values into *
+    def after_batch(self, learn):
+        # move learner batch to cpu and unpack to x, y and all remaining values into *
         x,y,*_ = to_cpu(learn.batch)
-        for m in self.metrics.values(): m.update(to_cpu(learn.preds), y)
+        # loop through metric values and call `update` using `learn.preds` (on cpu)
+        for o in self.metrics.values(): o.update(to_cpu(learn.preds), y)
+        # update loss separately using `learn.loss` and batch size as weight
         self.loss.update(to_cpu(learn.loss), weight=len(x))
 
-# %% ../nbs/09_learner.ipynb 58
+# %% ../nbs/09_learner.ipynb 68
 class DeviceCB(Callback):
+    # init with def_device (cuda)
     def __init__(self, device=def_device): fc.store_attr()
+    # put model to device before fitting
     def before_fit(self, learn):
         if hasattr(learn.model, 'to'): learn.model.to(self.device)
+    # put batch to device before batch
     def before_batch(self, learn): learn.batch = to_device(learn.batch, self.device)
 
-# %% ../nbs/09_learner.ipynb 65
+# %% ../nbs/09_learner.ipynb 74
 class TrainCB(Callback):
     """Basic training callback"""
     # n_inp allows to train models with more than one input
@@ -106,33 +119,37 @@ class TrainCB(Callback):
     def step(self, learn): learn.opt.step()
     def zero_grad(self, learn): learn.opt.zero_grad()
 
-# %% ../nbs/09_learner.ipynb 66
+# %% ../nbs/09_learner.ipynb 76
 class ProgressCB(Callback):
     # decrease callback priority
     order = MetricsCB.order + 1
     def __init__(self, plot=False): self.plot = plot
     
     def before_fit(self, learn):
-        # import ipdb; ipdb.set_trace()
         # create master_bar and set it to both mbar and learn.epochs
         learn.epochs = self.mbar = master_bar(learn.epochs)
         self.first = True
         # substitute _log method of learn's metrics (simple print) with progress bar
         if hasattr(learn, 'metrics'): learn.metrics._log = self._log
+        # keep track of train and valid losses
         self.losses = []
         self.val_losses = []
     
     def _log(self, d):
+        # import ipdb; ipdb.set_trace()
+        # if first run setup the column titles (['accuracy', 'loss', 'epoch', 'train'])
         if self.first:
             self.mbar.write(list(d), table=True)
             self.first = False
         self.mbar.write(list(d.values()), table=True)
         
     def before_epoch(self, learn): 
-        # ??
+        # here learn.dl is wrapped by progress_bar
+        # During the call to enumerate in Learner progress_bar gen (learner dataloader) attribute is used
         learn.dl = progress_bar(learn.dl, leave=False, parent=self.mbar)
         
     def after_batch(self, learn):
+        # print our batch loss (comment on the right of the progress_bar)
         learn.dl.comment = f'{learn.loss:.3f}'
         if self.plot and hasattr(learn, 'metrics') and learn.training:
             self.losses.append(learn.loss.item())
@@ -155,22 +172,25 @@ class ProgressCB(Callback):
                      [fc.L.range(learn.epoch+1).map(lambda x: (x+1)*len(learn.dls.train)), 
                       self.val_losses]])
 
-# %% ../nbs/09_learner.ipynb 71
+# %% ../nbs/09_learner.ipynb 84
 class with_cbs:
-    def __init__(self, nm): self.nm = nm
+    def __init__(self, nm: str): self.nm = nm
     def __call__(self, f):
+        # create internal _f that uses try block and calls `before_nm` and `after_nm` callbacks on `o`
+        # checkng for exception in globals() and finally calling cleanup
         def _f(o, *args, **kwargs):
             try:
-                o.callback(f'before_{self.nm}')
+                o.callback(f'before_{self.nm}') 
                 # we need to pass `o` as well as *args will not include it
                 # because it is separately stored to o
                 f(o, *args, **kwargs)
                 o.callback(f'after_{self.nm}')
-            except globals()[f'Cancel{self.nm.title()}Exception']: pass
+            # if there is another exception - it runs finally directly
+            except globals()[f'Cancel{self.nm.title()}Exception']: print(f"Got Cancel{self.nm.title()}Exception") # pass
             finally: o.callback(f'cleanup_{self.nm}')
         return _f
 
-# %% ../nbs/09_learner.ipynb 72
+# %% ../nbs/09_learner.ipynb 86
 class Learner:
     def __init__(self, 
                  model, # model to be used for training
@@ -180,69 +200,89 @@ class Learner:
                  cbs=None, # callbacks
                  opt_func=optim.SGD # optimizer
                 ):
-        cbs = fc.L(cbs)
         fc.store_attr()
         
     
     @with_cbs('batch')
     def _one_batch(self):
+        # predict followed by an after callback
         self.predict()
         self.callback('after_predict')
+        # get loss followed by an after callback
         self.get_loss()
         self.callback('after_loss')
+        # if training
         if self.training:
+            # backward followed by an after callback
             self.backward()
             self.callback('after_backward')
+            # step followed by an after callback
             self.step()
             self.callback('after_step')
+            # zero grad
             self.zero_grad()
-        
-    
+
+
     @with_cbs('epoch')
     def _one_epoch(self):
+        # iterate through dls calling one batch
         for self.iter, self.batch in enumerate(self.dl): self._one_batch()
-    
+        
     
     def one_epoch(self, training):
+        # set the model mode and get dl
         self.model.train(training)
         self.dl = self.dls.train if training else self.dls.valid
+        # run one epoch
         self._one_epoch()
-    
+        
     
     @with_cbs('fit')
-    def _fit(self, train, valid):
+    def _fit(self, train: bool, valid: bool):
+        # loop through epochs for train and valid
         for self.epoch in self.epochs:
             if train: self.one_epoch(True)
             if valid: torch.no_grad()(self.one_epoch)(False)
-        
     
+        
     def fit(self, n_epochs=1, train=True, valid=True, cbs=None, lr=None):
+        # cast callbacks to L
         cbs = fc.L(cbs)
         # add extra temporary callbacks to the Learner callbacks
         for cb in cbs: self.cbs.append(cb)
+        # try block
         try:
+            # create number of epochs, their range, lr (if not passed) and optimizer
             self.n_epochs = n_epochs
             self.epochs = range(n_epochs)
             if lr is None: lr = self.lr
-            if self.opt_func: self.opt = self.opt_func(self.model.parameters(), lr)
-            # import ipdb; ipdb.set_trace()
+            self.opt = self.opt_func(self.model.parameters(), lr)
+            # fit train and valid
             self._fit(train, valid)
-        finally:
+        # remove cbs in finally
+        finally: 
             for cb in cbs: self.cbs.remove(cb)
     
-    
+
     def __getattr__(self, name):
-        if name in ('predict', 'get_loss', 'backward', 'step', 'zero_grad'): return partial(self.callback, name)
+        """
+        Use __getattr__ method to call predict, get_loss, backward, step and zero_grad directly on Learner instead of its TrainCB
+        Runs `callback` method to loop through all callbacks and call those that have a specified name. For example `predict` from TrainCB
+        Return partial (instead of self.callback(name)) because we want to return a function, not a value (which is None). In run_cbs 
+        the last line is method(learn) - see how it works with TrainCB class methods that actually implement methods below
+        """
+        if name in ('predict', 'get_loss', 'backward', 'step', 'zero_grad'):
+            return partial(self.callback, name)
         raise AttributeError(name)
         
-    
+        
     def callback(self, method_nm): run_cbs(self.cbs, method_nm, self)
         
         
     @property
-    def training(self): return self.model.training    
+    def training(self): return self.model.training
 
-# %% ../nbs/09_learner.ipynb 75
+# %% ../nbs/09_learner.ipynb 89
 class TrainLearner(Learner):
     # note that we sublcass Learner and implement below methods directly in it
     # not through cbs. So __getattr__ will not be called
@@ -252,20 +292,22 @@ class TrainLearner(Learner):
     def step(self): self.opt.step()
     def zero_grad(self): self.opt.zero_grad()
 
-# %% ../nbs/09_learner.ipynb 76
+# %% ../nbs/09_learner.ipynb 90
 class MomentumLearner(TrainLearner):
     def __init__(self, model, dls, loss_func, lr=None, cbs=None, opt=optim.SGD, mom=0.85):
+        # save mom and call super init
         self.mom = mom
         super().__init__(model, dls, loss_func, lr, cbs, opt)
-        
+       
     def zero_grad(self):
+        # update zero_grad method to account for momentum - not zero grads completely but multiply by a constant
         with torch.no_grad():
             for p in self.model.parameters(): p.grad *= self.mom
 
-# %% ../nbs/09_learner.ipynb 84
+# %% ../nbs/09_learner.ipynb 99
 from torch.optim.lr_scheduler import ExponentialLR
 
-# %% ../nbs/09_learner.ipynb 85
+# %% ../nbs/09_learner.ipynb 100
 class LRFinderCB(Callback):
     def __init__(self, gamma=1.3, max_mult=3): fc.store_attr()
     
@@ -279,6 +321,7 @@ class LRFinderCB(Callback):
         if not learn.training: raise CancelEpochException()
         self.lrs.append(learn.opt.param_groups[0]['lr'])
         loss = to_cpu(learn.loss)
+        import ipdb;ipdb.set_trace()
         self.losses.append(loss)
         if loss < self.min: self.min = loss
         if math.isnan(loss) or (loss > self.min*self.max_mult): 
@@ -286,10 +329,11 @@ class LRFinderCB(Callback):
         self.sched.step()
     
     def cleanup_fit(self, learn):
+       
         plt.plot(self.lrs, self.losses)
         plt.xscale('log')
 
-# %% ../nbs/09_learner.ipynb 88
+# %% ../nbs/09_learner.ipynb 103
 @fc.patch
 def lr_find(self: Learner, gamma=1.3, max_mult=3, start_lr=1e-5, max_epochs=10):
     self.fit(max_epochs, lr=start_lr, cbs=LRFinderCB(gamma=gamma, max_mult=max_mult))
