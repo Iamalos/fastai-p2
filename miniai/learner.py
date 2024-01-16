@@ -56,11 +56,10 @@ def to_cpu(x):
     if isinstance(x, list): return [to_cpu(o) for o in x]
     # tuple case (via list)
     if isinstance(x, tuple): return tuple(to_cpu(list(x)))
-    # base case (tensor)
-    res = x.to('cpu')
+    # base case (tensor - remove gradient and move to cpu)
+    res = x.detach().to('cpu')
     # cast to float if tensor.dtype was float16
     return res.float() if res.dtype == torch.float16 else res
-                                          
 
 # %% ../nbs/09_learner.ipynb 65
 class MetricsCB(Callback):
@@ -312,20 +311,25 @@ class LRFinderCB(Callback):
     def __init__(self, gamma=1.3, max_mult=3): fc.store_attr()
     
     def before_fit(self, learn):
+        # screate a sched
         self.sched = ExponentialLR(learn.opt, self.gamma)
+        # create lists for storing lrs and losses
         self.lrs, self.losses = [],[]
         # starting value for a loss
         self.min = math.inf
         
     def after_batch(self, learn):
+        # if not in training - CancelEpoch
         if not learn.training: raise CancelEpochException()
+        # append learning rate and loss to the lists
         self.lrs.append(learn.opt.param_groups[0]['lr'])
         loss = to_cpu(learn.loss)
-        import ipdb;ipdb.set_trace()
         self.losses.append(loss)
+        # update min loss or cancel fit if it exceeds min by a factor of 3 or isnan
         if loss < self.min: self.min = loss
         if math.isnan(loss) or (loss > self.min*self.max_mult): 
             raise CancelFitException()
+        # scheduler step
         self.sched.step()
     
     def cleanup_fit(self, learn):
