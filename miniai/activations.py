@@ -128,7 +128,7 @@ class ActivationStats(HooksCallback):
     
     def color_dim(self, figsize=(11,5)):
         # grab grid based on length of stats
-        fig, axes = get_grid(len(self))
+        fig, axes = get_grid(len(self), figsize=figsize)
         # plot colorful dims plots for each hook
         for ax,h in zip(axes.flat, self):
             show_image(get_hist(h), ax, origin='lower')
@@ -141,38 +141,6 @@ class ActivationStats(HooksCallback):
         for ax,h in zip(axes.flat, self):
             ax.plot(get_min(h))
             ax.set_ylim(0,1)
-    
-    def plot_stats(self, figsize=(10,4)):
-        # create subplots and plot means and std
-        fig, axes = plt.subplots(1, 2, figsize=figsize)
-        for h in self:
-            for i in 0,1: axes[i].plot(h.stats[i])
-        axes[0].set_title('Means')
-        axes[1].set_title('Stdevs')
-        plt.legend(fc.L.range(self))
-
-# %% ../nbs/10_activations.ipynb 94
-class ActivationStats(HooksCallback):
-    # super init
-    def __init__(self, mod_filter=fc.noop): super().__init__(append_stats, mod_filter)
-    
-    
-    def color_dim(self, figsize=(11,5)):
-        # grab grid based on length of stats
-        fig, axes = get_grid(len(self), figsize=figsize)
-        # plot colorful dims plots for each hook
-        for ax, h in zip(axes.flat, self):
-            show_image(get_hist(h), ax, origin='lower')
-      
-    
-    def dead_chart(self, figsize=(11,5)):
-        # grab grid based on length of stats
-        fig, axes = get_grid(len(self), figsize=figsize)
-        # plot dead_chart (min(h)
-        for ax, h in zip(axes.flat, self):
-            ax.plot(get_min(h))
-            ax.set_ylim(0,1)
-    
     
     def plot_stats(self, figsize=(10,4)):
         # create subplots and plot means and std

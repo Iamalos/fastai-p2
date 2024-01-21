@@ -185,7 +185,7 @@ class with_cbs:
                 f(o, *args, **kwargs)
                 o.callback(f'after_{self.nm}')
             # if there is another exception - it runs finally directly
-            except globals()[f'Cancel{self.nm.title()}Exception']: print(f"Got Cancel{self.nm.title()}Exception") # pass
+            except globals()[f'Cancel{self.nm.title()}Exception']: pass #print(f"Got Cancel{self.nm.title()}Exception") # pass
             finally: o.callback(f'cleanup_{self.nm}')
         return _f
 
@@ -333,7 +333,6 @@ class LRFinderCB(Callback):
         self.sched.step()
     
     def cleanup_fit(self, learn):
-       
         plt.plot(self.lrs, self.losses)
         plt.xscale('log')
 

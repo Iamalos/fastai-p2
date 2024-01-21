@@ -27,7 +27,7 @@ from .conv import *
 from .learner import *
 from .activations import *
 
-# %% ../nbs/11_initializing.ipynb 20
+# %% ../nbs/11_initializing.ipynb 21
 def clean_ipython_hist():
     # Code in this function mainly copied from IPython source
     if not 'get_ipython' in globals(): return
@@ -43,7 +43,7 @@ def clean_ipython_hist():
     hm._i = hm._ii = hm._iii = hm._i00 =  ''
      
 
-# %% ../nbs/11_initializing.ipynb 21
+# %% ../nbs/11_initializing.ipynb 22
 def clean_tb():
     # h/t Piotr Czapla
     if hasattr(sys, 'last_traceback'):
@@ -53,7 +53,7 @@ def clean_tb():
     if hasattr(sys, 'last_value'): delattr(sys, 'last_value')
      
 
-# %% ../nbs/11_initializing.ipynb 22
+# %% ../nbs/11_initializing.ipynb 23
 def clean_mem():
     clean_tb()
     clean_ipython_hist()
@@ -61,7 +61,7 @@ def clean_mem():
     torch.cuda.empty_cache()
      
 
-# %% ../nbs/11_initializing.ipynb 93
+# %% ../nbs/11_initializing.ipynb 100
 class BatchTransformCB(Callback):
     # tfm can be nn.Sequential in order to combine several transforms
     def __init__(self, tfm, on_train=True, on_val=True): fc.store_attr()
@@ -71,7 +71,7 @@ class BatchTransformCB(Callback):
             # transform batch during the `before_batch` stage
             learn.batch = self.tfm(learn.batch)
 
-# %% ../nbs/11_initializing.ipynb 104
+# %% ../nbs/11_initializing.ipynb 111
 class GeneralRelu(nn.Module):
     def __init__(self, leak=None, sub=None, maxv=None):
         super().__init__()
@@ -83,7 +83,7 @@ class GeneralRelu(nn.Module):
         if self.maxv is not None: x.clamp_max_(self.maxv)
         return x
 
-# %% ../nbs/11_initializing.ipynb 106
+# %% ../nbs/11_initializing.ipynb 113
 def plot_func(f, start=-5, end=5, steps=100):
     # setup x
     x = torch.linspace(start,end,steps)
@@ -95,13 +95,13 @@ def plot_func(f, start=-5, end=5, steps=100):
     plt.axhline(y=0, color='k', linewidth=0.7)
     plt.axvline(x=0, color='k', linewidth=0.7)
 
-# %% ../nbs/11_initializing.ipynb 110
+# %% ../nbs/11_initializing.ipynb 117
 def init_weights(m, leaky=0.):
     # init kaiming normal for conv layers
     if isinstance(m, (nn.Conv1d, nn.Conv2d, nn.Conv3d)): 
         init.kaiming_normal_(m.weight, a=leaky)
 
-# %% ../nbs/11_initializing.ipynb 120
+# %% ../nbs/11_initializing.ipynb 127
 def _lsuv_stats(hook, # hook object
                 mod, # module to hook onto
                 inp, # input to a layer (x or output from previous layer)
@@ -126,7 +126,7 @@ def lsuv_init(model,
             m_in.weight.data /= h.std
     h.remove()
 
-# %% ../nbs/11_initializing.ipynb 134
+# %% ../nbs/11_initializing.ipynb 141
 def conv(ni, nf, ks=3, stride=2, act=nn.ReLU, norm=None, bias=None):
     # if Normalization is of type BN, than we don't need bias
     if bias is None: bias = not isinstance(norm, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d))
@@ -139,7 +139,7 @@ def conv(ni, nf, ks=3, stride=2, act=nn.ReLU, norm=None, bias=None):
     # pull all layers into Sequential
     return nn.Sequential(*layers)          
 
-# %% ../nbs/11_initializing.ipynb 135
+# %% ../nbs/11_initializing.ipynb 142
 def get_model(act=nn.ReLU, nfs=None, norm=None):
     # standard number of filters ([1,8,16,32,64])
     if nfs is None: nfs = [1,8,16,32,64]
